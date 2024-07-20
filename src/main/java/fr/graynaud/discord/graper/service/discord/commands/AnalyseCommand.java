@@ -5,6 +5,7 @@ import discord4j.core.event.domain.interaction.ChatInputInteractionEvent;
 import discord4j.core.object.command.ApplicationCommandInteractionOption;
 import discord4j.core.object.command.ApplicationCommandInteractionOptionValue;
 import discord4j.core.object.entity.channel.TextChannel;
+import discord4j.core.spec.MessageCreateSpec;
 import discord4j.discordjson.json.ApplicationCommandOptionData;
 import discord4j.discordjson.json.ApplicationCommandRequest;
 import fr.graynaud.discord.graper.service.discord.messages.MessagesScraper;
@@ -43,11 +44,26 @@ public class AnalyseCommand implements SlashCommand {
                                .get()
                                .filter(TextChannel.class::isInstance)
                                .map(TextChannel.class::cast)
-                               .flatMap(channel -> {
-                                   this.scraper.eatMessages(channel, Snowflake.of(Instant.now().minusSeconds(60 * duration)));
-
-                                   return event.createFollowup().withEphemeral(true).withContent("Analyse lancée \uD83D\uDE80");
-                               }))
+                               .flatMap(channel -> event.createFollowup()
+                                                        .withContent("Analyse lancée pour <#" + channel.getId().asLong() + "> \uD83D\uDE80")
+                                                        .flatMap(message -> this.scraper.eatMessages(channel,
+                                                                                                     Snowflake.of(Instant.now().minusSeconds(60 * duration)))
+                                                                                        .flatMap(whitelisted -> {
+                                                                                            if (whitelisted) {
+                                                                                                return channel.createMessage(MessageCreateSpec.builder()
+                                                                                                                                              .messageReference(
+                                                                                                                                                      message.getId())
+                                                                                                                                              .content(
+                                                                                                                                                      "Analyse terminée \uD83D\uDD25")
+                                                                                                                                              .build());
+                                                                                            } else {
+                                                                                                return channel.createMessage(MessageCreateSpec.builder()
+                                                                                                                                              .messageReference(message.getId())
+                                                                                                                                              .content("Le channel n'est pas whitelisé 💀")
+                                                                                                                                              .build());
+                                                                                            }
+                                                                                        })
+                                                                                        .then())))
                     .then();
     }
 

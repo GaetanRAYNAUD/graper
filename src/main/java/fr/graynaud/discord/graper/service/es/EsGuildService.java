@@ -20,9 +20,13 @@ public interface EsGuildService {
 
     Mono<EsGuild> create(Guild guild);
 
+    Mono<Boolean> whitelistChannel(TextChannel channel);
+
     Mono<Boolean> whitelistChannel(Guild guild, TextChannel channel);
 
     Mono<Boolean> whitelistChannelAndAnalyse(Guild guild, TextChannel channel);
+
+    Mono<Boolean> blacklistChannel(TextChannel c);
 
     Mono<Boolean> blacklistChannel(Guild guild, TextChannel channel);
 

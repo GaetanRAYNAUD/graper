@@ -8,7 +8,9 @@ import org.springframework.data.elasticsearch.annotations.Field;
 import org.springframework.data.elasticsearch.annotations.FieldType;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @Document(indexName = "guild")
 public class EsGuild {
@@ -21,7 +23,7 @@ public class EsGuild {
     private String name;
 
     @Field(name = "whitelisted_channels_ids", type = FieldType.Keyword)
-    private List<String> whitelistedChannelsIds;
+    private Set<String> whitelistedChannelsIds;
 
     public EsGuild() {
     }
@@ -47,13 +49,13 @@ public class EsGuild {
         this.name = name;
     }
 
-    public List<String> getWhitelistedChannelsIds() {
+    public Set<String> getWhitelistedChannelsIds() {
         return whitelistedChannelsIds;
     }
 
     public boolean whitelistChannel(TextChannel textChannel) {
         if (this.whitelistedChannelsIds == null) {
-            this.whitelistedChannelsIds = new ArrayList<>();
+            this.whitelistedChannelsIds = new HashSet<>();
         }
 
         return this.whitelistedChannelsIds.add(textChannel.getId().asString());
@@ -67,7 +69,7 @@ public class EsGuild {
         return this.whitelistedChannelsIds.remove(textChannel.getId().asString());
     }
 
-    public void setWhitelistedChannelsIds(List<String> whitelistedChannelsIds) {
+    public void setWhitelistedChannelsIds(Set<String> whitelistedChannelsIds) {
         this.whitelistedChannelsIds = whitelistedChannelsIds;
     }
 }

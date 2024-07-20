@@ -6,28 +6,41 @@ import discord4j.core.object.entity.Guild;
 import discord4j.core.object.entity.Message;
 import discord4j.core.object.entity.channel.TextChannel;
 import discord4j.core.object.reaction.ReactionEmoji;
+import discord4j.core.spec.EmbedCreateFields.Field;
+import discord4j.core.spec.EmbedCreateSpec;
+import discord4j.rest.util.Color;
 import fr.graynaud.discord.graper.model.EsGuild;
 import fr.graynaud.discord.graper.model.EsMessage;
 import fr.graynaud.discord.graper.model.EsMessageReaction;
+import fr.graynaud.discord.graper.service.discord.commands.FilteredCommand;
+import fr.graynaud.discord.graper.service.discord.commands.FilteredCommand.Filter;
 import fr.graynaud.discord.graper.service.es.EsGuildService;
 import fr.graynaud.discord.graper.service.es.EsMessageService;
+import fr.graynaud.discord.graper.service.es.object.RecapResult;
+import org.apache.commons.collections4.SetUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
+import java.time.DayOfWeek;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.temporal.TemporalAdjusters;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 
 @Service
 public class MessagesScraperImpl implements MessagesScraper {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(MessagesScraperImpl.class);
 
-    private static final Map<String, List<String>> WHITELISTED_CHANNELS = new HashMap<>();
+    private static final Map<String, Set<String>> WHITELISTED_CHANNELS = new HashMap<>();
 
     private final GatewayDiscordClient client;
 
@@ -46,7 +59,11 @@ public class MessagesScraperImpl implements MessagesScraper {
                    .flatMap(Guild::getChannels)
                    .filter(TextChannel.class::isInstance)
                    .map(TextChannel.class::cast)
-                   .subscribe(c -> eatMessages(c, Snowflake.of(Instant.now().minusSeconds(60 * 30))));
+                   .flatMap(c -> eatMessages(c, Snowflake.of(Instant.now().minusSeconds(60 * 30))).doOnSuccess(whitelisted -> {
+                       if (whitelisted) {
+                           LOGGER.info("Analysed messages for {} 🔥", c.getName());
+                       }
+                   })).subscribe();
     }
 
     @Scheduled(cron = "@midnight")
@@ -55,39 +72,161 @@ public class MessagesScraperImpl implements MessagesScraper {
                    .flatMap(Guild::getChannels)
                    .filter(TextChannel.class::isInstance)
                    .map(TextChannel.class::cast)
-                   .subscribe(c -> eatMessages(c, Snowflake.of(Instant.now().minusSeconds(60 * 60 * 24 * 2))));
+                   .flatMap(c -> eatMessages(c, Snowflake.of(Instant.now().minusSeconds(60 * 60 * 24 * 2))).doOnSuccess(whitelisted -> {
+                       if (whitelisted) {
+                           LOGGER.info("Night analysed messages for {} 🔥", c.getName());
+                       }
+                   }))
+                   .subscribe();
     }
 
     @Override
-    public void eatMessages(TextChannel channel, Snowflake from) {
+    public Mono<Boolean> eatMessages(TextChannel channel, Snowflake from) {
         if (WHITELISTED_CHANNELS.containsKey(channel.getGuildId().asString()) &&
             WHITELISTED_CHANNELS.get(channel.getGuildId().asString()).contains(channel.getId().asString())) {
-            channel.getMessagesAfter(from).map(Message::getData).subscribe(message -> {
+            return channel.getMessagesAfter(from).map(Message::getData).flatMap(message -> {
                 EsMessage esMessage = new EsMessage(message, channel.getGuildId().asLong());
 
                 if (!message.reactions().isAbsent()) {
-                    Flux.concat(message.reactions()
-                                       .get()
-                                       .stream()
-                                       .map(reaction -> channel.getMessageById(Snowflake.of(message.id()))
-                                                               .flatMapMany(m -> m.getReactors(ReactionEmoji.of(reaction.emoji())))
-                                                               .collectList()
-                                                               .map(users -> new EsMessageReaction(reaction.emoji().name().orElse(null),
-                                                                                                   users.stream().map(u -> u.getId().asLong()).toList()))
-                                                               .map(esMessage::addReaction)
-                                                               .then())
-                                       .toList()).collectList().subscribe(unused -> this.esMessageService.save(esMessage));
+                    return Flux.concat(message.reactions()
+                                              .get()
+                                              .stream()
+                                              .map(reaction -> channel.getMessageById(Snowflake.of(message.id()))
+                                                                      .flatMapMany(m -> m.getReactors(ReactionEmoji.of(reaction.emoji())))
+                                                                      .collectList()
+                                                                      .map(users -> new EsMessageReaction(reaction.emoji().name().orElse(null),
+                                                                                                          users.stream().map(u -> u.getId().asLong()).toList()))
+                                                                      .map(esMessage::addReaction)
+                                                                      .then())
+                                              .toList()).collectList().flatMap(voidList -> {
+                        this.esMessageService.save(esMessage);
+
+                        return Mono.just(0);
+                    });
                 } else {
                     this.esMessageService.save(esMessage);
+
+                    return Mono.just(0);
                 }
-            });
+            }).collectList().flatMap(o -> Mono.just(true));
         }
+
+        return Mono.just(false);
     }
 
     @Override
     public void upsertGuildChannels(EsGuild guild) {
-        WHITELISTED_CHANNELS.put(guild.getId(), guild.getWhitelistedChannelsIds());
+        WHITELISTED_CHANNELS.put(guild.getId(), SetUtils.emptyIfNull(guild.getWhitelistedChannelsIds()));
 
         LOGGER.info("Whitelisted channels for {}: {}", guild.getName(), guild.getWhitelistedChannelsIds());
+    }
+
+    @Override
+    public void doRecap(Message edit, TextChannel channel, Filter filter, int nbWords) {
+        this.esMessageService.recap(String.valueOf(channel.getGuildId().asLong()), filter, nbWords)
+                             .flatMap(recap -> {
+                                 Mono<Message> message;
+                                 if (edit != null) {
+                                     message = edit.edit().withEmbeds(EmbedCreateSpec.create()
+                                                                                     .withDescription(recapDescription(filter, recap))
+                                                                                     .withColor(Color.WHITE));
+                                 } else {
+                                     message = channel.createMessage(EmbedCreateSpec.create()
+                                                                                    .withDescription(recapDescription(filter, recap))
+                                                                                    .withColor(Color.WHITE));
+                                 }
+
+                                 return message.flatMap(m -> channel.createMessage(EmbedCreateSpec.create()
+                                                                                                  .withDescription("Le top **" + Math.min(nbWords,
+                                                                                                                                          recap.getAuthors()
+                                                                                                                                               .size()) +
+                                                                                                                   "** des plus gros parleurs sont :")
+                                                                                                  .withFields(recap.getAuthors()
+                                                                                                                   .entrySet()
+                                                                                                                   .stream()
+                                                                                                                   .sorted(FilteredCommand.COMPARATOR)
+                                                                                                                   .map(e -> Field.of("",
+                                                                                                                                      "<@" + e.getKey() +
+                                                                                                                                      "> avec **" +
+                                                                                                                                      e.getValue() +
+                                                                                                                                      "** messages",
+                                                                                                                                      false))
+                                                                                                                   .toList())
+                                                                                                  .withColor(Color.WHITE))
+                                                                    .withMessageReference(m.getId()))
+                                               .flatMap(m1 ->
+                                                                channel.createMessage(EmbedCreateSpec.create()
+                                                                                                     .withDescription("Le top **" + Math.min(nbWords,
+                                                                                                                                             recap.getChannels()
+                                                                                                                                                  .size()) +
+                                                                                                                      "** des plus gros channels sont :")
+                                                                                                     .withFields(recap.getChannels()
+                                                                                                                      .entrySet()
+                                                                                                                      .stream()
+                                                                                                                      .sorted(FilteredCommand.COMPARATOR)
+                                                                                                                      .map(e -> Field.of("",
+                                                                                                                                         "<#" + e.getKey() +
+                                                                                                                                         "> avec **" +
+                                                                                                                                         e.getValue() +
+                                                                                                                                         "** messages",
+                                                                                                                                         false))
+                                                                                                                      .toList())
+                                                                                                     .withColor(Color.WHITE))
+                                                                       .withMessageReference(m1.getId()))
+                                               .flatMap(m1 ->
+                                                                channel.createMessage(EmbedCreateSpec.create()
+                                                                                                     .withDescription("Le top **" +
+                                                                                                                      Math.min(nbWords,
+                                                                                                                               recap.getWords().size()) +
+                                                                                                                      "** des mots les plus utilisés sont :")
+                                                                                                     .withFields(recap.getWords()
+                                                                                                                      .entrySet()
+                                                                                                                      .stream()
+                                                                                                                      .sorted(FilteredCommand.COMPARATOR)
+                                                                                                                      .map(e -> Field.of("",
+                                                                                                                                         "**" + e.getKey() +
+                                                                                                                                         "** avec **" +
+                                                                                                                                         e.getValue() +
+                                                                                                                                         "** utilisations",
+                                                                                                                                         false))
+                                                                                                                      .toList())
+                                                                                                     .withColor(Color.WHITE))
+                                                                       .withMessageReference(m1.getId()));
+                             }).subscribe();
+    }
+
+    private String recapDescription(Filter filter, RecapResult recap) {
+        StringBuilder sb = new StringBuilder("**Voici un récapitulatif de la semaine dernière ");
+
+        filter.getPerson().ifPresent(s -> sb.append("de <@").append(s).append("> "));
+        filter.getChannel().ifPresent(s -> sb.append("dans <#").append(s).append("> "));
+
+        sb.append("**");
+        sb.append("\n\n");
+
+        sb.append("Il y a eu **");
+        sb.append(recap.getNbMessage());
+        sb.append("** messages d'envoyés.");
+        sb.append("\n\n");
+        sb.append("D'ailleurs en voici un aléatoire :\n");
+        sb.append("https://discord.com/channels/");
+        sb.append(recap.getRandomMessage().getGuildId());
+        sb.append("/");
+        sb.append(recap.getRandomMessage().getChannelId());
+        sb.append("/");
+        sb.append(recap.getRandomMessage().getId());
+
+        return StringUtils.trimToEmpty(sb.toString());
+    }
+
+    @Scheduled(cron = "0 0 9 * * MON", zone = "Europe/Paris")
+    public void sendRecap() {
+        LocalDate startPreviousWeek = LocalDate.now().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)).plusDays(-7);
+        LocalDate endPreviousWeek = LocalDate.now().with(TemporalAdjusters.previous(DayOfWeek.SUNDAY));
+        Filter filter = new Filter(Optional.empty(), Optional.empty(), Optional.of(startPreviousWeek), Optional.of(endPreviousWeek));
+
+        this.client.getGuilds()
+                   .flatMap(Guild::getSystemChannel)
+                   .subscribe(channel -> doRecap(null, channel, filter, 5));
     }
 }

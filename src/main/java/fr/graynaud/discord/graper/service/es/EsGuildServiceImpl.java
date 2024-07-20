@@ -15,8 +15,7 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
-
-import java.time.Instant;
+import reactor.core.scheduler.Schedulers;
 
 @Service
 public class EsGuildServiceImpl implements EsGuildService {
@@ -64,10 +63,15 @@ public class EsGuildServiceImpl implements EsGuildService {
     }
 
     @Override
+    public Mono<Boolean> whitelistChannel(TextChannel channel) {
+        return channel.getGuild().flatMap(guild -> whitelistChannel(guild, channel));
+    }
+
+    @Override
     public Mono<Boolean> whitelistChannel(Guild guild, TextChannel channel) {
         return this.repository.findById(guild.getId().asString()).flatMap(g -> {
             if (g.whitelistChannel(channel)) {
-                return this.repository.save(g).then(Mono.just(true));
+                return this.repository.save(g).doOnSuccess(this.scraper::upsertGuildChannels).then(Mono.just(true));
             } else {
                 return Mono.just(false);
             }
@@ -81,9 +85,9 @@ public class EsGuildServiceImpl implements EsGuildService {
 
     @Override
     public Mono<Boolean> whitelistChannelAndAnalyse(Guild guild, TextChannel channel) {
-        return whitelistChannel(guild, channel).flatMap(blacklisted -> {
+        return whitelistChannel(guild, channel).publishOn(Schedulers.boundedElastic()).flatMap(blacklisted -> {
             if (BooleanUtils.toBoolean(blacklisted)) {
-                this.scraper.eatMessages(channel, Snowflake.of(Instant.EPOCH));
+                this.scraper.eatMessages(channel, Snowflake.of(0)).subscribe();
 
                 return Mono.just(true);
             } else {
@@ -93,10 +97,15 @@ public class EsGuildServiceImpl implements EsGuildService {
     }
 
     @Override
+    public Mono<Boolean> blacklistChannel(TextChannel channel) {
+        return channel.getGuild().flatMap(guild -> blacklistChannel(guild, channel));
+    }
+
+    @Override
     public Mono<Boolean> blacklistChannel(Guild guild, TextChannel channel) {
         return this.repository.findById(guild.getId().asString()).flatMap(g -> {
             if (g.blacklistChannel(channel)) {
-                return this.repository.save(g).then(Mono.just(true));
+                return this.repository.save(g).doOnSuccess(this.scraper::upsertGuildChannels).then(Mono.just(true));
             } else {
                 return Mono.just(false);
             }

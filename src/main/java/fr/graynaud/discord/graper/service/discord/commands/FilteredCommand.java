@@ -18,12 +18,16 @@ import java.util.Optional;
 
 public abstract class FilteredCommand implements SlashCommand {
 
-    protected static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+    public static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
-    protected static final Comparator<Entry<String, Long>> COMPARATOR = Entry.<String, Long>comparingByValue().reversed().thenComparing(Entry::getValue);
+    public static final Comparator<Entry<String, Long>> COMPARATOR = Entry.<String, Long>comparingByValue().reversed().thenComparing(Entry::getValue);
 
     protected Filter prepare(ChatInputInteractionEvent event) {
-        return new Filter(event);
+        return new Filter(event.getOptions());
+    }
+
+    protected Filter prepare(List<ApplicationCommandInteractionOption> options) {
+        return new Filter(options);
     }
 
     protected List<ApplicationCommandOptionData> getOptions() {
@@ -76,18 +80,31 @@ public abstract class FilteredCommand implements SlashCommand {
 
         private final Optional<LocalDate> end;
 
-        public Filter(ChatInputInteractionEvent event) {
-            this.channel = event.getOption("channel")
+        public Filter(Optional<String> channel, Optional<String> person, Optional<LocalDate> start, Optional<LocalDate> end) {
+            this.channel = channel;
+            this.person = person;
+            this.start = start;
+            this.end = end;
+        }
+
+        public Filter(List<ApplicationCommandInteractionOption> options) {
+            this.channel = options.stream()
+                                .filter(option -> option.getName().equals("channel"))
+                                .findFirst()
                                 .flatMap(ApplicationCommandInteractionOption::getValue)
                                 .map(ApplicationCommandInteractionOptionValue::asSnowflake)
                                 .map(Snowflake::asString)
                                 .filter(StringUtils::isNotBlank);
-            this.person = event.getOption("person")
+            this.person = options.stream()
+                               .filter(option -> option.getName().equals("person"))
+                               .findFirst()
                                .flatMap(ApplicationCommandInteractionOption::getValue)
                                .map(ApplicationCommandInteractionOptionValue::asSnowflake)
                                .map(Snowflake::asString)
                                .filter(StringUtils::isNotBlank);
-            this.start = event.getOption("start")
+            this.start = options.stream()
+                              .filter(option -> option.getName().equals("start"))
+                              .findFirst()
                               .flatMap(ApplicationCommandInteractionOption::getValue)
                               .map(ApplicationCommandInteractionOptionValue::asString)
                               .filter(StringUtils::isNotBlank)
@@ -98,7 +115,9 @@ public abstract class FilteredCommand implements SlashCommand {
                                       return Optional.empty();
                                   }
                               });
-            this.end = event.getOption("end")
+            this.end = options.stream()
+                            .filter(option -> option.getName().equals("end"))
+                            .findFirst()
                             .flatMap(ApplicationCommandInteractionOption::getValue)
                             .map(ApplicationCommandInteractionOptionValue::asString)
                             .filter(StringUtils::isNotBlank)

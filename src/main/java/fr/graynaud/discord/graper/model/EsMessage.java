@@ -12,6 +12,8 @@ import org.springframework.data.elasticsearch.annotations.FieldType;
 import org.springframework.util.CollectionUtils;
 
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
@@ -74,10 +76,18 @@ public class EsMessage {
     @Field(name = "nb_reactions")
     private int nbReactions;
 
+    @Field(name = "day")
+    private int day;
+
+    @Field(name = "hour_of_day")
+    private int hourOfDay;
+
     public EsMessage() {
     }
 
     public EsMessage(MessageData message, long guildId) {
+        Instant instant = Instant.from(DateTimeFormatter.ISO_INSTANT.parse(message.timestamp()));
+        ZonedDateTime zonedDateTime = instant.atZone(ZoneId.of("Europe/Paris"));
         this.id = message.id().asLong();
         this.mentionEveryone = message.mentionEveryone();
         this.mentionRolesIds = message.mentionRoles().stream().map(Long::parseLong).toList();
@@ -85,7 +95,7 @@ public class EsMessage {
         this.content = message.content();
         this.contentLength = this.content.length();
         this.tts = message.tts();
-        this.timestamp = Instant.from(DateTimeFormatter.ISO_INSTANT.parse(message.timestamp())).toEpochMilli();
+        this.timestamp = instant.toEpochMilli();
         this.mentionsIds = message.mentions().stream().map(UserWithMemberData::id).map(Id::asLong).toList();
         this.nbMentions = this.mentionsIds.size();
         this.messageReferenceId = message.messageReference()
@@ -99,6 +109,8 @@ public class EsMessage {
         this.nbMentionsChannels = this.mentionChannelsIds == null ? 0 : this.mentionChannelsIds.size();
         this.authorId = message.author().id().asLong();
         this.channelId = message.channelId().asLong();
+        this.day = zonedDateTime.getDayOfWeek().getValue();
+        this.hourOfDay = zonedDateTime.getHour();
     }
 
     public long getId() {
@@ -252,4 +264,6 @@ public class EsMessage {
     public void setNbReactions(int nbReactions) {
         this.nbReactions = nbReactions;
     }
+
+
 }

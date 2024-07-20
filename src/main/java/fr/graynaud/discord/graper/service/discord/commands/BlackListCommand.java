@@ -4,9 +4,11 @@ import discord4j.core.event.domain.interaction.ChatInputInteractionEvent;
 import discord4j.core.object.command.ApplicationCommandInteractionOption;
 import discord4j.core.object.command.ApplicationCommandInteractionOptionValue;
 import discord4j.core.object.entity.channel.TextChannel;
+import discord4j.core.spec.MessageCreateSpec;
 import discord4j.discordjson.json.ApplicationCommandOptionData;
 import discord4j.discordjson.json.ApplicationCommandRequest;
 import fr.graynaud.discord.graper.service.es.EsGuildService;
+import fr.graynaud.discord.graper.service.es.EsMessageService;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
@@ -17,8 +19,11 @@ public class BlackListCommand implements SlashCommand {
 
     private final EsGuildService esGuildService;
 
-    public BlackListCommand(EsGuildService esGuildService) {
+    private final EsMessageService esMessageService;
+
+    public BlackListCommand(EsGuildService esGuildService, EsMessageService esMessageService) {
         this.esGuildService = esGuildService;
+        this.esMessageService = esMessageService;
     }
 
     @Override
@@ -35,14 +40,26 @@ public class BlackListCommand implements SlashCommand {
                                .get()
                                .filter(TextChannel.class::isInstance)
                                .map(TextChannel.class::cast)
-                               .flatMap(channel -> this.esGuildService.blacklistChannelAndDelete(channel)
-                                                                      .flatMap(blacklisted -> event.createFollowup()
+                               .flatMap(c -> this.esGuildService.blacklistChannel(c)
+                                                                .flatMap(b -> event.createFollowup()
                                                                                                    .withEphemeral(true)
-                                                                                                   .withContent("Channel <#" + channel.getId().asBigInteger() +
-                                                                                                                (blacklisted ?
-                                                                                                                 "> exclu, ces messages vont être supprimés." :
+                                                                                   .withContent("Channel <#" + c.getId().asBigInteger() +
+                                                                                                (b ?
+                                                                                                 "> exclu, ses messages vont être supprimés 💀." :
                                                                                                                  "> déjà exclu."))
-                                                                                                   .then(Mono.just(channel))))
+                                                                                   .flatMap(message -> {
+                                                                                       if (b) {
+                                                                                           return this.esMessageService.deleteByChannel(c.getId().asLong())
+                                                                                                                       .flatMap(r -> c.createMessage(
+                                                                                                                                       MessageCreateSpec.builder()
+                                                                                                                                                        .messageReference(message.getId())
+                                                                                                                                                        .content("Suppression terminée 💀")
+                                                                                                                                                        .build()));
+                                                                                       } else {
+                                                                                           return Mono.empty();
+                                                                                       }
+                                                                                   })
+                                                                                   .then()))
                                .then());
     }
 
