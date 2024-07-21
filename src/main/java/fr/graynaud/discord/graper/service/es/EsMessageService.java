@@ -1,7 +1,7 @@
 package fr.graynaud.discord.graper.service.es;
 
+import co.elastic.clients.elasticsearch._types.aggregations.CalendarInterval;
 import fr.graynaud.discord.graper.model.EsMessage;
-import fr.graynaud.discord.graper.service.discord.commands.FilteredCommand;
 import fr.graynaud.discord.graper.service.discord.commands.FilteredCommand.Filter;
 import fr.graynaud.discord.graper.service.es.object.RecapResult;
 import org.apache.commons.lang3.tuple.Pair;
@@ -53,4 +53,12 @@ public interface EsMessageService {
     Mono<List<EsMessage>> searchMessageMostReactions(String guildId, Filter filter, int nbWords);
 
     Mono<Map<String, Long>> searchMostUsedReactions(String guildId, Filter filter, int nbWords);
+
+    Mono<Map<String, Long>> searchMostReaction(String guildId, Filter filter, int nbWords);
+
+    Mono<Map<String, Long>> searchMostReactionUsedBy(String guildId, Filter filter, int nbWords);
+
+    Mono<Map<String, Long>> searchReactionMostUsedBy(String guildId, Filter filter, String text, int nbWords);
+
+    Mono<Map<String, Long>> dateHistogram(String guildId, Filter filter, CalendarInterval interval, int nbWords);
 }

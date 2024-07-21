@@ -16,26 +16,26 @@ import java.util.Map;
 import java.util.Optional;
 
 @Component
-public class PersonMentionMostByCommand extends FilteredCommand implements SlashCommand {
+public class PersonMostUsedReactionsCommand extends FilteredCommand implements SlashCommand {
 
     private static final int NB_WORDS = 5;
 
     private final EsMessageService esMessageService;
 
-    public PersonMentionMostByCommand(EsMessageService esMessageService) {
+    public PersonMostUsedReactionsCommand(EsMessageService esMessageService) {
         this.esMessageService = esMessageService;
     }
 
     @Override
     public String getName() {
-        return "personmostmentionsby";
+        return "personmostusedreactions";
     }
 
     @Override
     public Mono<Void> handle(ChatInputInteractionEvent event) {
         Filter filter = prepare(event);
         return event.deferReply()
-                    .then(this.esMessageService.searchMostMentionBy(event.getInteraction().getGuildId().get().asString(), filter, NB_WORDS)
+                    .then(this.esMessageService.searchMostReactionUsedBy(event.getInteraction().getGuildId().get().asString(), filter, NB_WORDS)
                                                .flatMap(words -> event.createFollowup()
                                                                       .withEmbeds(EmbedCreateSpec.create()
                                                                                                  .withDescription(phrase(filter))
@@ -44,7 +44,7 @@ public class PersonMentionMostByCommand extends FilteredCommand implements Slash
                                                                                                                   .stream()
                                                                                                                   .sorted(COMPARATOR)
                                                                                                                   .map(e -> Field.of("",
-                                                                                                                                     "<@" + e.getKey() + "> avec **" + e.getValue() + "** mentions",
+                                                                                                                                     e.getKey() + " avec **" + e.getValue() + "** réactions",
                                                                                                                                      false))
                                                                                                                   .toList()))))
                     .then();
@@ -54,8 +54,8 @@ public class PersonMentionMostByCommand extends FilteredCommand implements Slash
     public ApplicationCommandRequest getRequest() {
         return ApplicationCommandRequest.builder()
                                         .name(getName())
-                                        .nameLocalizationsOrNull(Map.of("fr", "personne_ping_plus_par"))
-                                        .description("Remonte le top " + NB_WORDS + " des personnes qui mentionnent une personne.")
+                                        .nameLocalizationsOrNull(Map.of("fr", "personne_reaction_plus_utilisees"))
+                                        .description("Remonte le top " + NB_WORDS + " des réactions les plus utilisées par une personne.")
                                         .options(List.of(
                                                 ApplicationCommandOptionData.builder()
                                                                             .name("person")
@@ -89,7 +89,7 @@ public class PersonMentionMostByCommand extends FilteredCommand implements Slash
     }
 
     private String phrase(Filter filter) {
-        StringBuilder sb = new StringBuilder("Les " + NB_WORDS + " personnes qui mentionnent le plus <@" + filter.getPerson().get() + "> dans les messages ");
+        StringBuilder sb = new StringBuilder("Les " + NB_WORDS + " réactions les plus utilisées par <@" + filter.getPerson().get() + "> ");
         filter.setPerson(Optional.empty());
         super.phrase(filter, sb);
         sb.append(" sont :");
