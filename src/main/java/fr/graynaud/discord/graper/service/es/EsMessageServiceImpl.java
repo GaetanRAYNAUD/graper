@@ -3,12 +3,11 @@ package fr.graynaud.discord.graper.service.es;
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import co.elastic.clients.elasticsearch._helpers.bulk.BulkIngester;
 import co.elastic.clients.elasticsearch._helpers.bulk.BulkListener;
-import co.elastic.clients.elasticsearch._types.ScriptLanguage;
 import co.elastic.clients.elasticsearch._types.SortOptions;
 import co.elastic.clients.elasticsearch._types.SortOrder;
 import co.elastic.clients.elasticsearch._types.aggregations.Aggregation;
-import co.elastic.clients.elasticsearch._types.aggregations.SignificantStringTermsBucket;
-import co.elastic.clients.elasticsearch._types.aggregations.SignificantTextAggregation;
+import co.elastic.clients.elasticsearch._types.aggregations.LongTermsBucket;
+import co.elastic.clients.elasticsearch._types.aggregations.NestedAggregation;
 import co.elastic.clients.elasticsearch._types.aggregations.StringTermsBucket;
 import co.elastic.clients.elasticsearch._types.aggregations.TermsAggregation;
 import co.elastic.clients.elasticsearch._types.aggregations.ValueCountAggregation;
@@ -111,16 +110,11 @@ public class EsMessageServiceImpl implements EsMessageService {
     @Override
     public Mono<Map<String, Long>> searchBestWord(String guildId, Filter filter, int nbWords) {
         Query query = new Query.Builder().bool(prepare(guildId, filter).build()).build();
-        Aggregation aggregation = SignificantTextAggregation.of(b -> b.field("content")
-                                                                      .size(nbWords)
-                                                                      .scriptHeuristic(bb -> bb.script(bbb -> bbb.inline(
-                                                                              bbbb -> bbbb.lang(ScriptLanguage.Painless).source("params._subset_freq + 0.0")))))
-                                                            ._toAggregation();
 
         NativeQuery nativeQuery = NativeQuery.builder()
                                              .withQuery(query)
                                              .withMaxResults(0)
-                                             .withAggregation("words", aggregation)
+                                             .withAggregation("words", TermsAggregation.of(b -> b.field("content").size(nbWords))._toAggregation())
                                              .build();
 
         return this.operations.searchForHits(nativeQuery, EsMessage.class)
@@ -128,15 +122,35 @@ public class EsMessageServiceImpl implements EsMessageService {
                                       .get("words")
                                       .aggregation()
                                       .getAggregate()
-                                      .sigsterms()
+                                      .sterms()
                                       .buckets()
                                       .array()
                                       .stream()
-                                      .collect(Collectors.toMap(SignificantStringTermsBucket::key, SignificantStringTermsBucket::docCount)));
+                                      .collect(Collectors.toMap(b -> b.key().stringValue(), StringTermsBucket::docCount)));
     }
 
     @Override
-    public Mono<Long> searchText(String guildId, Filter filter, String text) {
+    public Mono<Long> count(String guildId, Filter filter) {
+        Query query = new Query.Builder().bool(prepare(guildId, filter).build()).build();
+
+        NativeQuery nativeQuery = NativeQuery.builder()
+                                             .withQuery(query)
+                                             .withMaxResults(0)
+                                             .withAggregation("count", ValueCountAggregation.of(b -> b.field("id"))._toAggregation())
+                                             .build();
+
+        return this.operations.searchForHits(nativeQuery, EsMessage.class)
+                              .map(hits -> ((ElasticsearchAggregations) hits.getAggregations())
+                                      .get("count")
+                                      .aggregation()
+                                      .getAggregate()
+                                      .valueCount()
+                                      .value())
+                              .map(Double::longValue);
+    }
+
+    @Override
+    public Mono<Long> countText(String guildId, Filter filter, String text) {
         Query query = new Query.Builder().bool(prepareText(guildId, filter, text).build()).build();
 
         Aggregation aggregation = ValueCountAggregation.of(b -> b.field("id"))._toAggregation();
@@ -255,15 +269,11 @@ public class EsMessageServiceImpl implements EsMessageService {
                                              .withQuery(query)
                                              .withMaxResults(1)
                                              .withAggregation("count", ValueCountAggregation.of(b -> b.field("id"))._toAggregation())
-                                             .withAggregation("channel", TermsAggregation.of(b -> b.field("channel_id"))._toAggregation())
-                                             .withAggregation("author", TermsAggregation.of(b -> b.field("author_id"))._toAggregation())
-                                             .withAggregation("words", SignificantTextAggregation.of(b -> b.field("content")
-                                                                                                           .size(nbWords)
-                                                                                                           .minDocCount(1L)
-                                                                                                           .scriptHeuristic(bb -> bb.script(bbb -> bbb.inline(
-                                                                                                                   bbbb -> bbbb.lang(ScriptLanguage.Painless)
-                                                                                                                               .source("params._subset_freq + 0.0")))))
-                                                                                                 ._toAggregation())
+                                             .withAggregation("channel", TermsAggregation.of(b -> b.field("channel_id").size(nbWords))._toAggregation())
+                                             .withAggregation("author", TermsAggregation.of(b -> b.field("author_id").size(nbWords))._toAggregation())
+                                             .withAggregation("hour", TermsAggregation.of(b -> b.field("hour_of_day").size(nbWords))._toAggregation())
+                                             .withAggregation("day", TermsAggregation.of(b -> b.field("day").size(nbWords))._toAggregation())
+                                             .withAggregation("words", TermsAggregation.of(b -> b.field("content").size(nbWords))._toAggregation())
                                              .build();
 
         return this.operations.searchForHits(nativeQuery, EsMessage.class)
@@ -297,14 +307,287 @@ public class EsMessageServiceImpl implements EsMessageService {
                                                        result.setWords(aggregations.get("words")
                                                                                    .aggregation()
                                                                                    .getAggregate()
-                                                                                   .sigsterms()
+                                                                                   .sterms()
                                                                                    .buckets()
                                                                                    .array()
                                                                                    .stream()
-                                                                                   .collect(Collectors.toMap(SignificantStringTermsBucket::key,
-                                                                                                             SignificantStringTermsBucket::docCount)));
+                                                                                   .collect(Collectors.toMap(b -> b.key().stringValue(),
+                                                                                                             StringTermsBucket::docCount)));
+                                                       result.setHours(aggregations.get("hour")
+                                                                                   .aggregation()
+                                                                                   .getAggregate()
+                                                                                   .lterms()
+                                                                                   .buckets()
+                                                                                   .array()
+                                                                                   .stream()
+                                                                                   .collect(Collectors.toMap(LongTermsBucket::key,
+                                                                                                             LongTermsBucket::docCount)));
+                                                       result.setDays(aggregations.get("day")
+                                                                                  .aggregation()
+                                                                                  .getAggregate()
+                                                                                  .lterms()
+                                                                                  .buckets()
+                                                                                  .array()
+                                                                                  .stream()
+                                                                                  .collect(Collectors.toMap(LongTermsBucket::key,
+                                                                                                            LongTermsBucket::docCount)));
                                                        return result;
                                                    }));
+    }
+
+    @Override
+    public Mono<Map<Long, Long>> searchDay(String guildId, Filter filter, Optional<String> text, int nbWords) {
+        BoolQuery.Builder builder = prepareText(guildId, filter, text);
+
+        NativeQuery nativeQuery = NativeQuery.builder()
+                                             .withQuery(new Query.Builder().bool(builder.build()).build())
+                                             .withMaxResults(0)
+                                             .withAggregation("day", TermsAggregation.of(b -> b.field("day").size(nbWords))._toAggregation())
+                                             .build();
+
+        return this.operations.searchForHits(nativeQuery, EsMessage.class)
+                              .map(hits -> ((ElasticsearchAggregations) hits.getAggregations()))
+                              .map(aggregations -> aggregations.get("day")
+                                                               .aggregation()
+                                                               .getAggregate()
+                                                               .lterms()
+                                                               .buckets()
+                                                               .array()
+                                                               .stream()
+                                                               .collect(Collectors.toMap(LongTermsBucket::key, LongTermsBucket::docCount)));
+    }
+
+    @Override
+    public Mono<Map<Long, Long>> searchHour(String guildId, Filter filter, Optional<String> text, int nbWords) {
+        BoolQuery.Builder builder = prepareText(guildId, filter, text);
+
+        NativeQuery nativeQuery = NativeQuery.builder()
+                                             .withQuery(new Query.Builder().bool(builder.build()).build())
+                                             .withMaxResults(0)
+                                             .withAggregation("hour", TermsAggregation.of(b -> b.field("hour_of_day").size(nbWords))._toAggregation())
+                                             .build();
+
+        return this.operations.searchForHits(nativeQuery, EsMessage.class)
+                              .map(hits -> ((ElasticsearchAggregations) hits.getAggregations()))
+                              .map(aggregations -> aggregations.get("hour")
+                                                               .aggregation()
+                                                               .getAggregate()
+                                                               .lterms()
+                                                               .buckets()
+                                                               .array()
+                                                               .stream()
+                                                               .collect(Collectors.toMap(LongTermsBucket::key, LongTermsBucket::docCount)));
+    }
+
+    @Override
+    public Mono<Pair<Long, Long>> searchTextPercent(String guildId, Filter filter, String text) {
+        BoolQuery.Builder builder = prepare(guildId, filter);
+
+        NativeQuery nativeQuery = NativeQuery.builder()
+                                             .withQuery(new Query.Builder().bool(builder.build()).build())
+                                             .withMaxResults(0)
+                                             .withAggregation("count", ValueCountAggregation.of(b -> b.field("id"))._toAggregation())
+                                             .withAggregation("filtered",
+                                                              new Aggregation.Builder().filter(b -> b.matchPhrase(bb -> bb.query(text).field("content")))
+                                                                                       .aggregations("count", ValueCountAggregation.of(b -> b.field("id"))
+                                                                                                                                   ._toAggregation())
+                                                                                       .build())
+                                             .build();
+
+        return this.operations.searchForHits(nativeQuery, EsMessage.class)
+                              .map(hits -> ((ElasticsearchAggregations) hits.getAggregations()))
+                              .map(aggregations -> {
+                                  long total = (long) aggregations.get("count").aggregation().getAggregate().valueCount().value();
+                                  long filtered = (long) aggregations.get("filtered")
+                                                                     .aggregation()
+                                                                     .getAggregate()
+                                                                     .filter()
+                                                                     .aggregations()
+                                                                     .get("count")
+                                                                     .valueCount()
+                                                                     .value();
+
+                                  return Pair.of(filtered, total);
+                              });
+    }
+
+    @Override
+    public Mono<Map<String, Long>> searchMostMentionned(String guildId, Filter filter, int nbWords) {
+        Query query = new Query.Builder().bool(prepare(guildId, filter).build()).build();
+
+        NativeQuery nativeQuery = NativeQuery.builder()
+                                             .withQuery(query)
+                                             .withMaxResults(0)
+                                             .withAggregation("mention", TermsAggregation.of(b -> b.field("mentions_ids").size(nbWords))._toAggregation())
+                                             .build();
+
+        return this.operations.searchForHits(nativeQuery, EsMessage.class)
+                              .map(hits -> ((ElasticsearchAggregations) hits.getAggregations())
+                                      .get("mention")
+                                      .aggregation()
+                                      .getAggregate()
+                                      .sterms()
+                                      .buckets()
+                                      .array()
+                                      .stream()
+                                      .collect(Collectors.toMap(b -> b.key().stringValue(), StringTermsBucket::docCount)));
+    }
+
+    @Override
+    public Mono<Map<String, Long>> searchMostMentionnedRole(String guildId, Filter filter, int nbWords) {
+        Query query = new Query.Builder().bool(prepare(guildId, filter).build()).build();
+
+        NativeQuery nativeQuery = NativeQuery.builder()
+                                             .withQuery(query)
+                                             .withMaxResults(0)
+                                             .withAggregation("mention", TermsAggregation.of(b -> b.field("mention_roles_ids").size(nbWords))._toAggregation())
+                                             .build();
+
+        return this.operations.searchForHits(nativeQuery, EsMessage.class)
+                              .map(hits -> ((ElasticsearchAggregations) hits.getAggregations())
+                                      .get("mention")
+                                      .aggregation()
+                                      .getAggregate()
+                                      .sterms()
+                                      .buckets()
+                                      .array()
+                                      .stream()
+                                      .collect(Collectors.toMap(b -> b.key().stringValue(), StringTermsBucket::docCount)));
+    }
+
+    @Override
+    public Mono<List<EsMessage>> searchMessageMostMentions(String guildId, Filter filter, int nbWords) {
+        Query query = new Query.Builder().bool(prepare(guildId, filter).filter(b -> b.range(bb -> bb.field("nb_mentions").gte(JsonData.of("1")))).build())
+                                         .build();
+
+        NativeQuery nativeQuery = NativeQuery.builder()
+                                             .withQuery(query)
+                                             .withMaxResults(nbWords)
+                                             .withSort(SortOptions.of(b -> b.field(bb -> bb.field("nb_mentions").order(SortOrder.Desc))))
+                                             .build();
+
+        return this.operations.search(nativeQuery, EsMessage.class)
+                              .collectList()
+                              .map(hits -> hits.stream()
+                                               .map(SearchHit::getContent)
+                                               .sorted(Comparator.comparingInt(EsMessage::getNbMentions).reversed())
+                                               .toList());
+    }
+
+    @Override
+    public Mono<Map<String, Long>> searchMostMention(String guildId, Filter filter, int nbWords) {
+        Query query = new Query.Builder().bool(prepare(guildId, filter).build()).build();
+
+        Aggregation aggregation = new Aggregation.Builder().terms(b -> b.field("author_id").size(nbWords))
+                                                           .aggregations("sum", b -> b.sum(bb -> bb.field("nb_mentions")))
+                                                           .aggregations("sort", b -> b.bucketSort(
+                                                                   bb -> bb.sort(bbb -> bbb.field(bbbb -> bbbb.order(SortOrder.Desc).field("sum")))))
+                                                           .build();
+
+        NativeQuery nativeQuery = NativeQuery.builder()
+                                             .withQuery(query)
+                                             .withMaxResults(0)
+                                             .withAggregation("author", aggregation)
+                                             .build();
+
+        return this.operations.searchForHits(nativeQuery, EsMessage.class)
+                              .map(hits -> ((ElasticsearchAggregations) hits.getAggregations())
+                                      .get("author")
+                                      .aggregation()
+                                      .getAggregate()
+                                      .sterms()
+                                      .buckets()
+                                      .array()
+                                      .stream()
+                                      .collect(Collectors.toMap(b -> b.key().stringValue(),
+                                                                b -> (long) b.aggregations().get("sum").sum().value())));
+    }
+
+    @Override
+    public Mono<Map<String, Long>> searchMostMentionBy(String guildId, Filter filter, int nbWords) {
+        Optional<String> person = filter.getPerson();
+        filter.setPerson(Optional.empty());
+
+        BoolQuery.Builder builder = prepare(guildId, filter);
+        builder.filter(b -> b.term(bb -> bb.field("mentions_ids").value(person.get())));
+        filter.setPerson(person);
+
+        NativeQuery nativeQuery = NativeQuery.builder()
+                                             .withQuery(new Query.Builder().bool(builder.build()).build())
+                                             .withMaxResults(0)
+                                             .withAggregation("author", TermsAggregation.of(b -> b.field("author_id").size(nbWords))._toAggregation())
+                                             .build();
+
+        return this.operations.searchForHits(nativeQuery, EsMessage.class)
+                              .map(hits -> ((ElasticsearchAggregations) hits.getAggregations()))
+                              .map(aggregations -> aggregations.get("author")
+                                                               .aggregation()
+                                                               .getAggregate()
+                                                               .sterms()
+                                                               .buckets()
+                                                               .array()
+                                                               .stream()
+                                                               .collect(Collectors.toMap(b -> b.key().stringValue(), StringTermsBucket::docCount)));
+    }
+
+    @Override
+    public Mono<List<EsMessage>> searchMessageMostReactions(String guildId, Filter filter, int nbWords) {
+        Query query = new Query.Builder().bool(prepare(guildId, filter).filter(b -> b.range(bb -> bb.field("nb_reactions").gte(JsonData.of("1")))).build())
+                                         .build();
+
+        NativeQuery nativeQuery = NativeQuery.builder()
+                                             .withQuery(query)
+                                             .withMaxResults(nbWords)
+                                             .withSort(SortOptions.of(b -> b.field(bb -> bb.field("nb_reactions").order(SortOrder.Desc))))
+                                             .build();
+
+        return this.operations.search(nativeQuery, EsMessage.class)
+                              .collectList()
+                              .map(hits -> hits.stream()
+                                               .map(SearchHit::getContent)
+                                               .sorted(Comparator.comparingInt(EsMessage::getNbReactions).reversed())
+                                               .toList());
+    }
+
+    @Override
+    public Mono<Map<String, Long>> searchMostUsedReactions(String guildId, Filter filter, int nbWords) {
+        Query query = new Query.Builder().bool(prepare(guildId, filter).filter(b -> b.range(bb -> bb.field("nb_reactions").gte(JsonData.of("1")))).build())
+                                         .build();
+
+        Aggregation aggregation = new Aggregation.Builder().nested(b -> b.path("reactions"))
+                                                           .aggregations("reaction", b -> {
+                                                               Aggregation a = new Aggregation.Builder().terms(bb -> bb.field("reactions.name").size(nbWords))
+                                                                                                        .aggregations("sum", bb -> bb.sum(
+                                                                                                                bbb -> bbb.field("reactions.nb_users")))
+                                                                                                        .build();
+
+                                                               return b.terms(bb -> bb.field("reactions.name").size(nbWords))
+                                                                       .aggregations("sum", bb -> bb.sum(bbb -> bbb.field("reactions.nb_users")))
+                                                                       .aggregations("sort", bb -> bb.bucketSort(bbb -> bbb.sort(
+                                                                               bbbb -> bbbb.field(bbbbb -> bbbbb.order(SortOrder.Desc).field("sum")))));
+                                                           })
+                                                           .build();
+
+        NativeQuery nativeQuery = NativeQuery.builder()
+                                             .withQuery(query)
+                                             .withMaxResults(nbWords)
+                                             .withAggregation("reaction", aggregation)
+                                             .build();
+
+        return this.operations.searchForHits(nativeQuery, EsMessage.class)
+                              .map(hits -> ((ElasticsearchAggregations) hits.getAggregations()))
+                              .map(aggregations -> aggregations.get("reaction")
+                                                               .aggregation()
+                                                               .getAggregate()
+                                                               .nested()
+                                                               .aggregations()
+                                                               .get("reaction")
+                                                               .sterms()
+                                                               .buckets()
+                                                               .array()
+                                                               .stream()
+                                                               .collect(Collectors.toMap(b -> b.key().stringValue(),
+                                                                                         b -> (long) b.aggregations().get("sum").sum().value())));
     }
 
     private String getIndexName(EsMessage message) {

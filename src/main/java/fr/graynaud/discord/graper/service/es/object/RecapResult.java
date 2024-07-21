@@ -14,6 +14,10 @@ public class RecapResult {
 
     private Map<String, Long> words;
 
+    private Map<Long, Long> hours;
+
+    private Map<Long, Long> days;
+
     private Long nbMessage;
 
     public EsMessage getRandomMessage() {
@@ -54,5 +58,21 @@ public class RecapResult {
 
     public void setNbMessage(Long nbMessage) {
         this.nbMessage = nbMessage;
+    }
+
+    public Map<Long, Long> getHours() {
+        return hours;
+    }
+
+    public void setHours(Map<Long, Long> hours) {
+        this.hours = hours;
+    }
+
+    public Map<Long, Long> getDays() {
+        return days;
+    }
+
+    public void setDays(Map<Long, Long> days) {
+        this.days = days;
     }
 }

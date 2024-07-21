@@ -29,8 +29,10 @@ import reactor.core.publisher.Mono;
 import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.format.TextStyle;
 import java.time.temporal.TemporalAdjusters;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -191,12 +193,52 @@ public class MessagesScraperImpl implements MessagesScraper {
                                                                                                                                          false))
                                                                                                                       .toList())
                                                                                                      .withColor(Color.WHITE))
+                                                                       .withMessageReference(m1.getId()))
+                                               .flatMap(m1 ->
+                                                                channel.createMessage(EmbedCreateSpec.create()
+                                                                                                     .withDescription("Le top **" +
+                                                                                                                      Math.min(nbWords,
+                                                                                                                               recap.getHours().size()) +
+                                                                                                                      "** des heures les plus actives sont :")
+                                                                                                     .withFields(recap.getHours()
+                                                                                                                      .entrySet()
+                                                                                                                      .stream()
+                                                                                                                      .sorted(FilteredCommand.LONG_COMPARATOR)
+                                                                                                                      .map(e -> Field.of("",
+                                                                                                                                         "**" + e.getKey() +
+                                                                                                                                         "h** avec **" +
+                                                                                                                                         e.getValue() +
+                                                                                                                                         "** messages",
+                                                                                                                                         false))
+                                                                                                                      .toList())
+                                                                                                     .withColor(Color.WHITE))
+                                                                       .withMessageReference(m1.getId()))
+                                               .flatMap(m1 ->
+                                                                channel.createMessage(EmbedCreateSpec.create()
+                                                                                                     .withDescription("Le top **" +
+                                                                                                                      Math.min(nbWords,
+                                                                                                                               recap.getWords().size()) +
+                                                                                                                      "** des jours les plus actifs sont :")
+                                                                                                     .withFields(recap.getDays()
+                                                                                                                      .entrySet()
+                                                                                                                      .stream()
+                                                                                                                      .sorted(FilteredCommand.LONG_COMPARATOR)
+                                                                                                                      .map(e -> Field.of("",
+                                                                                                                                         "**" +
+                                                                                                                                         StringUtils.capitalize(DayOfWeek.of(e.getKey().intValue()).getDisplayName(TextStyle.FULL_STANDALONE, Locale.FRANCE)) +
+                                                                                                                                         "** avec **" +
+                                                                                                                                         e.getValue() +
+                                                                                                                                         "** messages",
+                                                                                                                                         false))
+                                                                                                                      .toList())
+                                                                                                     .withColor(Color.WHITE))
                                                                        .withMessageReference(m1.getId()));
                              }).subscribe();
     }
 
     private String recapDescription(Filter filter, RecapResult recap) {
-        StringBuilder sb = new StringBuilder("**Voici un récapitulatif de la semaine dernière ");
+        StringBuilder sb = new StringBuilder("**Voici un récapitulatif du " + FilteredCommand.DATE_TIME_FORMATTER.format(filter.getStart().get()) + " au " +
+                                             FilteredCommand.DATE_TIME_FORMATTER.format(filter.getEnd().get()) + " ");
 
         filter.getPerson().ifPresent(s -> sb.append("de <@").append(s).append("> "));
         filter.getChannel().ifPresent(s -> sb.append("dans <#").append(s).append("> "));

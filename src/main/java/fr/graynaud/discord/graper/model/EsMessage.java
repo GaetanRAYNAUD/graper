@@ -6,17 +6,18 @@ import discord4j.discordjson.json.MessageData;
 import discord4j.discordjson.json.MessageReferenceData;
 import discord4j.discordjson.json.UserWithMemberData;
 import discord4j.discordjson.possible.Possible;
+import org.apache.commons.collections4.CollectionUtils;
 import org.springframework.data.elasticsearch.annotations.Document;
 import org.springframework.data.elasticsearch.annotations.Field;
-import org.springframework.data.elasticsearch.annotations.FieldType;
-import org.springframework.util.CollectionUtils;
 
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 @Document(indexName = "messages", createIndex = false)
 public class EsMessage {
@@ -71,7 +72,7 @@ public class EsMessage {
     private long channelId;
 
     @Field(name = "reactions")
-    private List<EsMessageReaction> reactions;
+    private Set<EsMessageReaction> reactions;
 
     @Field(name = "nb_reactions")
     private int nbReactions;
@@ -209,19 +210,22 @@ public class EsMessage {
         this.channelId = channelId;
     }
 
-    public List<EsMessageReaction> getReactions() {
+    public Set<EsMessageReaction> getReactions() {
         return reactions;
     }
 
     public boolean addReaction(EsMessageReaction reaction) {
         if (this.reactions == null) {
-            this.reactions = new ArrayList<>();
+            this.reactions = new LinkedHashSet<>();
         }
 
-        return this.reactions.add(reaction);
+        boolean b = this.reactions.add(reaction);
+        this.nbReactions = CollectionUtils.size(this.reactions);
+
+        return b;
     }
 
-    public void setReactions(List<EsMessageReaction> reactions) {
+    public void setReactions(Set<EsMessageReaction> reactions) {
         this.reactions = reactions;
     }
 
@@ -265,5 +269,19 @@ public class EsMessage {
         this.nbReactions = nbReactions;
     }
 
+    public int getDay() {
+        return day;
+    }
 
+    public void setDay(int day) {
+        this.day = day;
+    }
+
+    public int getHourOfDay() {
+        return hourOfDay;
+    }
+
+    public void setHourOfDay(int hourOfDay) {
+        this.hourOfDay = hourOfDay;
+    }
 }

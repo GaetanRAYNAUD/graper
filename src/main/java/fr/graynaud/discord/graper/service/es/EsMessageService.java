@@ -20,7 +20,9 @@ public interface EsMessageService {
 
     Mono<Map<String, Long>> searchBestWord(String guildId, Filter filter, int nbWords);
 
-    Mono<Long> searchText(String guildId, Filter filter, String word);
+    Mono<Long> count(String guildId, Filter filter);
+
+    Mono<Long> countText(String guildId, Filter filter, String word);
 
     Mono<Pair<Long, Map<String, Long>>> searchTextWho(String guildId, Filter filter, String text);
 
@@ -31,4 +33,24 @@ public interface EsMessageService {
     Mono<EsMessage> searchRandomMessage(String guildId, Filter filter, Optional<String> text);
 
     Mono<RecapResult> recap(String guildId, Filter filter, int nbWords);
+
+    Mono<Map<Long, Long>> searchDay(String guildId, Filter filter, Optional<String> text, int nbWords);
+
+    Mono<Map<Long, Long>> searchHour(String guildId, Filter filter, Optional<String> text, int nbWords);
+
+    Mono<Pair<Long, Long>> searchTextPercent(String guildId, Filter filter, String text);
+
+    Mono<Map<String, Long>> searchMostMentionned(String string, Filter filter, int nbWords);
+
+    Mono<Map<String, Long>> searchMostMentionnedRole(String guildId, Filter filter, int nbWords);
+
+    Mono<List<EsMessage>> searchMessageMostMentions(String guildId, Filter filter, int nbWords);
+
+    Mono<Map<String, Long>> searchMostMention(String guildId, Filter filter, int nbWords);
+
+    Mono<Map<String, Long>> searchMostMentionBy(String guildId, Filter filter, int nbWords);
+
+    Mono<List<EsMessage>> searchMessageMostReactions(String guildId, Filter filter, int nbWords);
+
+    Mono<Map<String, Long>> searchMostUsedReactions(String guildId, Filter filter, int nbWords);
 }

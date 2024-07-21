@@ -13,21 +13,27 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
+import java.text.NumberFormat;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 @Component
-public class TextCommand extends FilteredCommand implements SlashCommand {
+public class TextPercentCommand extends FilteredCommand implements SlashCommand {
+
+    private static final NumberFormat NUMBER_FORMAT = NumberFormat.getPercentInstance(Locale.FRANCE);
 
     private final EsMessageService esMessageService;
 
-    public TextCommand(EsMessageService esMessageService) {
+    public TextPercentCommand(EsMessageService esMessageService) {
         this.esMessageService = esMessageService;
+
+        NUMBER_FORMAT.setMaximumFractionDigits(2);
     }
 
     @Override
     public String getName() {
-        return "text";
+        return "textpercent";
     }
 
     @Override
@@ -39,10 +45,11 @@ public class TextCommand extends FilteredCommand implements SlashCommand {
                            .get();
 
         return event.deferReply()
-                    .then(this.esMessageService.countText(event.getInteraction().getGuildId().get().asString(), filter, text)
-                                               .flatMap(nb -> event.createFollowup()
+                    .then(this.esMessageService.searchTextPercent(event.getInteraction().getGuildId().get().asString(), filter, text)
+                                               .flatMap(pair -> event.createFollowup()
                                                                    .withEmbeds(List.of(EmbedCreateSpec.create()
-                                                                                                      .withDescription(phrase(filter, text, nb))
+                                                                                                      .withDescription(phrase(filter, text, pair.getKey(),
+                                                                                                                              pair.getValue()))
                                                                                                       .withColor(Color.WHITE)))))
                     .then();
     }
@@ -51,8 +58,8 @@ public class TextCommand extends FilteredCommand implements SlashCommand {
     public ApplicationCommandRequest getRequest() {
         return ApplicationCommandRequest.builder()
                                         .name(getName())
-                                        .nameLocalizationsOrNull(Map.of("fr", "texte"))
-                                        .description("Indique dans combien de messages un texte a été utilisé.")
+                                        .nameLocalizationsOrNull(Map.of("fr", "texte_pourcent"))
+                                        .description("Indique dans quel pourcentage de messages un texte a été utilisé.")
                                         .options(ListUtils.union(List.of(ApplicationCommandOptionData.builder()
                                                                                                      .name("text")
                                                                                                      .nameLocalizationsOrNull(Map.of("fr", "texte"))
@@ -64,8 +71,10 @@ public class TextCommand extends FilteredCommand implements SlashCommand {
                                         .build();
     }
 
-    private String phrase(Filter filter, String text, long nb) {
-        StringBuilder sb = new StringBuilder("Le texte `" + text + "` a été utilisé dans **" + nb + "** messages ");
+    private String phrase(Filter filter, String text, long filtered, long total) {
+        StringBuilder sb = new StringBuilder(
+                "Le texte `" + text + "` a été utilisé dans **" + filtered + "** messages sur **" + total + "** soit **" +
+                NUMBER_FORMAT.format(filtered / (double) total) + "** des messages ");
         super.phrase(filter, sb);
 
         return StringUtils.normalizeSpace(sb.toString());

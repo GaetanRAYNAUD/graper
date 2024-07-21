@@ -19,7 +19,6 @@
 
 		<!-- Dependencies versions -->
 		<discord4j.version>3.2.5</discord4j.version>
-<!--		<elasticsearch-client.version>8.14.3</elasticsearch-client.version>-->
 		<commons-lang3.version>3.15.0</commons-lang3.version>
 		<commons-collections4.version>4.5.0-M2</commons-collections4.version>
 	</properties>

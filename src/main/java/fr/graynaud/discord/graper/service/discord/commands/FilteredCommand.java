@@ -22,6 +22,8 @@ public abstract class FilteredCommand implements SlashCommand {
 
     public static final Comparator<Entry<String, Long>> COMPARATOR = Entry.<String, Long>comparingByValue().reversed().thenComparing(Entry::getValue);
 
+    public static final Comparator<Entry<Long, Long>> LONG_COMPARATOR = Entry.<Long, Long>comparingByValue().reversed().thenComparing(Entry::getValue);
+
     protected Filter prepare(ChatInputInteractionEvent event) {
         return new Filter(event.getOptions());
     }
@@ -72,13 +74,13 @@ public abstract class FilteredCommand implements SlashCommand {
 
     public static class Filter {
 
-        private final Optional<String> channel;
+        private Optional<String> channel;
 
-        private final Optional<String> person;
+        private Optional<String> person;
 
-        private final Optional<LocalDate> start;
+        private Optional<LocalDate> start;
 
-        private final Optional<LocalDate> end;
+        private Optional<LocalDate> end;
 
         public Filter(Optional<String> channel, Optional<String> person, Optional<LocalDate> start, Optional<LocalDate> end) {
             this.channel = channel;
@@ -134,16 +136,32 @@ public abstract class FilteredCommand implements SlashCommand {
             return channel;
         }
 
+        public void setChannel(Optional<String> channel) {
+            this.channel = channel;
+        }
+
         public Optional<String> getPerson() {
             return person;
+        }
+
+        public void setPerson(Optional<String> person) {
+            this.person = person;
         }
 
         public Optional<LocalDate> getStart() {
             return start;
         }
 
+        public void setStart(Optional<LocalDate> start) {
+            this.start = start;
+        }
+
         public Optional<LocalDate> getEnd() {
             return end;
+        }
+
+        public void setEnd(Optional<LocalDate> end) {
+            this.end = end;
         }
     }
 }
