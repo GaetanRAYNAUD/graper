@@ -1,5 +1,6 @@
 package fr.graynaud.discord.graper.service.discord.commands;
 
+import discord4j.common.util.Snowflake;
 import discord4j.core.event.domain.interaction.ChatInputInteractionEvent;
 import discord4j.core.object.command.ApplicationCommandInteractionOption;
 import discord4j.core.object.command.ApplicationCommandInteractionOptionValue;
@@ -8,15 +9,18 @@ import discord4j.core.spec.EmbedCreateSpec;
 import discord4j.discordjson.json.ApplicationCommandOptionData;
 import discord4j.discordjson.json.ApplicationCommandRequest;
 import discord4j.rest.util.Color;
+import fr.graynaud.discord.graper.service.chart.ChartUtils;
 import fr.graynaud.discord.graper.service.es.EsMessageService;
 import org.apache.commons.collections4.ListUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.springframework.stereotype.Component;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Component
 public class TextWhereCommand extends FilteredCommand implements SlashCommand {
@@ -42,18 +46,32 @@ public class TextWhereCommand extends FilteredCommand implements SlashCommand {
 
         return event.deferReply()
                     .then(this.esMessageService.searchTextWhere(event.getInteraction().getGuildId().get().asString(), filter, text)
+                                               .zipWhen(nb -> event.getInteraction()
+                                                                   .getGuild()
+                                                                   .flatMapMany(g -> Flux.concat(nb.getValue()
+                                                                                                   .keySet()
+                                                                                                   .stream()
+                                                                                                   .map(Long::parseLong)
+                                                                                                   .map(Snowflake::of)
+                                                                                                   .map(g::getChannelById)
+                                                                                                   .collect(Collectors.toSet())))
+                                                                   .collectList())
                                                .flatMap(nb -> event.createFollowup()
                                                                    .withEmbeds(List.of(EmbedCreateSpec.create()
-                                                                                                      .withDescription(phrase(filter, text, nb))
+                                                                                                      .withDescription(phrase(filter, text, nb.getT1()))
                                                                                                       .withColor(Color.WHITE)
-                                                                                                      .withFields(nb.getValue()
+                                                                                                      .withFields(nb.getT1()
+                                                                                                                    .getValue()
                                                                                                                     .entrySet()
                                                                                                                     .stream()
                                                                                                                     .sorted(COMPARATOR)
                                                                                                                     .map(e -> Field.of("",
                                                                                                                             "Dont " + e.getValue() + " fois dans <#" + e.getKey() + ">",
                                                                                                                                        false))
-                                                                                                                    .toList())))))
+                                                                                                                    .toList())
+                                                                                                      .withImage(ChartUtils.getPieRecap(nb.getT1().getValue(),
+                                                                                                                                        nb.getT1().getKey(),
+                                                                                                                                        nb.getT2()))))))
                     .then();
     }
 

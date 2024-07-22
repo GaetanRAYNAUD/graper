@@ -444,7 +444,6 @@ public final class ImmutableMessageData implements MessageData {
     /**
      * @deprecated
      */
-    @Deprecated
     @JsonCreator(
             mode = Mode.DELEGATING
     )

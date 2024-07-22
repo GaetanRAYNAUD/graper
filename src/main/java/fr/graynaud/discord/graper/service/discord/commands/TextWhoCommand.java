@@ -1,5 +1,6 @@
 package fr.graynaud.discord.graper.service.discord.commands;
 
+import discord4j.common.util.Snowflake;
 import discord4j.core.event.domain.interaction.ChatInputInteractionEvent;
 import discord4j.core.object.command.ApplicationCommandInteractionOption;
 import discord4j.core.object.command.ApplicationCommandInteractionOptionValue;
@@ -8,6 +9,7 @@ import discord4j.core.spec.EmbedCreateSpec;
 import discord4j.discordjson.json.ApplicationCommandOptionData;
 import discord4j.discordjson.json.ApplicationCommandRequest;
 import discord4j.rest.util.Color;
+import fr.graynaud.discord.graper.service.chart.ChartUtils;
 import fr.graynaud.discord.graper.service.es.EsMessageService;
 import org.apache.commons.collections4.ListUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -17,9 +19,12 @@ import reactor.core.publisher.Mono;
 
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Component
 public class TextWhoCommand extends FilteredCommand implements SlashCommand {
+
+    private static final int NB_WORDS = 5;
 
     private final EsMessageService esMessageService;
 
@@ -41,19 +46,32 @@ public class TextWhoCommand extends FilteredCommand implements SlashCommand {
                            .get();
 
         return event.deferReply()
-                    .then(this.esMessageService.searchTextWho(event.getInteraction().getGuildId().get().asString(), filter, text)
+                    .then(this.esMessageService.searchTextWho(event.getInteraction().getGuildId().get().asString(), filter, text, NB_WORDS)
+                                               .zipWhen(nb -> event.getInteraction()
+                                                                   .getGuild()
+                                                                   .flatMapMany(g -> g.requestMembers(nb.getValue()
+                                                                                                        .keySet()
+                                                                                                        .stream()
+                                                                                                        .map(Long::parseLong)
+                                                                                                        .map(Snowflake::of)
+                                                                                                        .collect(Collectors.toSet())))
+                                                                   .collectList())
                                                .flatMap(nb -> event.createFollowup()
                                                                    .withEmbeds(List.of(EmbedCreateSpec.create()
-                                                                                                      .withDescription(phrase(filter, text, nb))
+                                                                                                      .withDescription(phrase(filter, text, nb.getT1()))
                                                                                                       .withColor(Color.WHITE)
-                                                                                                      .withFields(nb.getValue()
+                                                                                                      .withFields(nb.getT1()
+                                                                                                                    .getValue()
                                                                                                                     .entrySet()
                                                                                                                     .stream()
                                                                                                                     .sorted(COMPARATOR)
                                                                                                                     .map(e -> Field.of("",
                                                                                                                             "Dont " + e.getValue() + " fois par <@" + e.getKey() + ">",
                                                                                                                                        false))
-                                                                                                                    .toList())))))
+                                                                                                                    .toList())
+                                                                                                      .withImage(ChartUtils.getPieRecap(nb.getT1().getValue(),
+                                                                                                                                        nb.getT1().getKey(),
+                                                                                                                                        nb.getT2()))))))
                     .then();
     }
 
@@ -75,7 +93,9 @@ public class TextWhoCommand extends FilteredCommand implements SlashCommand {
     }
 
     private String phrase(Filter filter, String text, Pair<Long, Map<String, Long>> nb) {
-        StringBuilder sb = new StringBuilder("Le texte `" + text + "` a été utilisé dans **" + nb.getKey() + "** messages ");
+        StringBuilder sb = new StringBuilder(
+                "Top **" + NB_WORDS + "** des personnes qui utilisent le texte `" + text + "`, au total il a été utilisé dans **" + nb.getKey() +
+                "** messages ");
         super.phrase(filter, sb);
 
         return StringUtils.normalizeSpace(sb.toString());

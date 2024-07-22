@@ -176,14 +176,14 @@ public class EsMessageServiceImpl implements EsMessageService {
     }
 
     @Override
-    public Mono<Pair<Long, Map<String, Long>>> searchTextWho(String guildId, Filter filter, String text) {
+    public Mono<Pair<Long, Map<String, Long>>> searchTextWho(String guildId, Filter filter, String text, int nbWords) {
         BoolQuery.Builder builder = prepareText(guildId, filter, text);
 
         NativeQuery nativeQuery = NativeQuery.builder()
                                              .withQuery(new Query.Builder().bool(builder.build()).build())
                                              .withMaxResults(0)
                                              .withAggregation("count", ValueCountAggregation.of(b -> b.field("id"))._toAggregation())
-                                             .withAggregation("author", TermsAggregation.of(b -> b.field("author_id"))._toAggregation())
+                                             .withAggregation("author", TermsAggregation.of(b -> b.field("author_id").size(nbWords))._toAggregation())
                                              .build();
 
         return this.operations.searchForHits(nativeQuery, EsMessage.class)

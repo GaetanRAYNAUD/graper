@@ -41,7 +41,7 @@ public class RoleMentionsCommand extends FilteredCommand implements SlashCommand
                                                                                                                   .stream()
                                                                                                                   .sorted(COMPARATOR)
                                                                                                                   .map(e -> Field.of("",
-                                                                                                                                     "<@" + e.getKey() + "> avec **" + e.getValue() + "** mentions",
+                                                                                                                                     "<@&" + e.getKey() + "> avec **" + e.getValue() + "** mentions",
                                                                                                                                      false))
                                                                                                                   .toList()))))
                     .then();

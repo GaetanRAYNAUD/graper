@@ -12,6 +12,7 @@ import discord4j.rest.util.Color;
 import fr.graynaud.discord.graper.model.EsGuild;
 import fr.graynaud.discord.graper.model.EsMessage;
 import fr.graynaud.discord.graper.model.EsMessageReaction;
+import fr.graynaud.discord.graper.service.chart.ChartUtils;
 import fr.graynaud.discord.graper.service.discord.commands.FilteredCommand;
 import fr.graynaud.discord.graper.service.discord.commands.FilteredCommand.Filter;
 import fr.graynaud.discord.graper.service.es.EsGuildService;
@@ -154,7 +155,9 @@ public class MessagesScraperImpl implements MessagesScraper {
                                                                                                                                       "** messages",
                                                                                                                                       false))
                                                                                                                    .toList())
-                                                                                                  .withColor(Color.WHITE))
+                                                                                                  .withColor(Color.WHITE)
+                                                                                                  .withImage(ChartUtils.getPieRecap(recap.getAuthors(),
+                                                                                                                                    recap.getNbMessage())))
                                                                     .withMessageReference(m.getId()))
                                                .flatMap(m1 ->
                                                                 channel.createMessage(EmbedCreateSpec.create()

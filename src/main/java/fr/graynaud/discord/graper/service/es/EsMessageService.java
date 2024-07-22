@@ -24,7 +24,7 @@ public interface EsMessageService {
 
     Mono<Long> countText(String guildId, Filter filter, String word);
 
-    Mono<Pair<Long, Map<String, Long>>> searchTextWho(String guildId, Filter filter, String text);
+    Mono<Pair<Long, Map<String, Long>>> searchTextWho(String guildId, Filter filter, String text, int nbWords);
 
     Mono<Pair<Long, Map<String, Long>>> searchTextWhere(String guildId, Filter filter, String text);
 

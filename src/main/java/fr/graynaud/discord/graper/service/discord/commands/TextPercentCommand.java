@@ -21,7 +21,7 @@ import java.util.Map;
 @Component
 public class TextPercentCommand extends FilteredCommand implements SlashCommand {
 
-    private static final NumberFormat NUMBER_FORMAT = NumberFormat.getPercentInstance(Locale.FRANCE);
+    public static final NumberFormat NUMBER_FORMAT = NumberFormat.getPercentInstance(Locale.FRANCE);
 
     private final EsMessageService esMessageService;
 
