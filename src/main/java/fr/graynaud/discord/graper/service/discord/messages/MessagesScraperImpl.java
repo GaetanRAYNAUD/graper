@@ -8,6 +8,8 @@ import discord4j.core.object.entity.channel.TextChannel;
 import discord4j.core.object.reaction.ReactionEmoji;
 import discord4j.core.spec.EmbedCreateFields.Field;
 import discord4j.core.spec.EmbedCreateSpec;
+import discord4j.discordjson.possible.PossibleFilter;
+import discord4j.discordjson.possible.PossibleModule;
 import discord4j.rest.util.Color;
 import fr.graynaud.discord.graper.model.EsGuild;
 import fr.graynaud.discord.graper.model.EsMessage;
@@ -15,15 +17,25 @@ import fr.graynaud.discord.graper.model.EsMessageReaction;
 import fr.graynaud.discord.graper.service.chart.ChartUtils;
 import fr.graynaud.discord.graper.service.discord.commands.FilteredCommand;
 import fr.graynaud.discord.graper.service.discord.commands.FilteredCommand.Filter;
+import fr.graynaud.discord.graper.service.discord.messages.ImmutableMessageData.Json;
 import fr.graynaud.discord.graper.service.es.EsGuildService;
 import fr.graynaud.discord.graper.service.es.EsMessageService;
 import fr.graynaud.discord.graper.service.es.object.RecapResult;
 import org.apache.commons.collections4.SetUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.codec.json.Jackson2JsonDecoder;
+import org.springframework.http.codec.json.Jackson2JsonEncoder;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.util.CollectionUtils;
+import org.springframework.web.reactive.function.client.ExchangeStrategies;
+import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -32,11 +44,15 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.format.TextStyle;
 import java.time.temporal.TemporalAdjusters;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Collectors;
 
 @Service
 public class MessagesScraperImpl implements MessagesScraper {
@@ -139,7 +155,15 @@ public class MessagesScraperImpl implements MessagesScraper {
                                                                                     .withColor(Color.WHITE));
                                  }
 
-                                 return message.flatMap(m -> channel.createMessage(EmbedCreateSpec.create()
+                                 return message.zipWhen(m -> channel.getGuild()
+                                                                    .flatMapMany(g -> g.requestMembers(recap.getAuthors()
+                                                                                                            .keySet()
+                                                                                                            .stream()
+                                                                                                            .map(Long::parseLong)
+                                                                                                            .map(Snowflake::of)
+                                                                                                            .collect(Collectors.toSet())))
+                                                                    .collectList())
+                                               .flatMap(m -> channel.createMessage(EmbedCreateSpec.create()
                                                                                                   .withDescription("Le top **" + Math.min(nbWords,
                                                                                                                                           recap.getAuthors()
                                                                                                                                                .size()) +
@@ -157,8 +181,18 @@ public class MessagesScraperImpl implements MessagesScraper {
                                                                                                                    .toList())
                                                                                                   .withColor(Color.WHITE)
                                                                                                   .withImage(ChartUtils.getPieRecap(recap.getAuthors(),
-                                                                                                                                    recap.getNbMessage())))
-                                                                    .withMessageReference(m.getId()))
+                                                                                                                                    recap.getNbMessage(),
+                                                                                                                                    m.getT2())))
+                                                                    .withMessageReference(m.getT1().getId()))
+                                               .zipWhen(m1 -> channel.getGuild()
+                                                                     .flatMapMany(g -> Flux.concat(recap.getChannels()
+                                                                                                        .keySet()
+                                                                                                        .stream()
+                                                                                                        .map(Long::parseLong)
+                                                                                                        .map(Snowflake::of)
+                                                                                                        .map(g::getChannelById)
+                                                                                                        .collect(Collectors.toSet())))
+                                                                     .collectList())
                                                .flatMap(m1 ->
                                                                 channel.createMessage(EmbedCreateSpec.create()
                                                                                                      .withDescription("Le top **" + Math.min(nbWords,
@@ -176,8 +210,11 @@ public class MessagesScraperImpl implements MessagesScraper {
                                                                                                                                          "** messages",
                                                                                                                                          false))
                                                                                                                       .toList())
-                                                                                                     .withColor(Color.WHITE))
-                                                                       .withMessageReference(m1.getId()))
+                                                                                                     .withColor(Color.WHITE)
+                                                                                                     .withImage(ChartUtils.getPieRecap(recap.getChannels(),
+                                                                                                                                       recap.getNbMessage(),
+                                                                                                                                       m1.getT2())))
+                                                                       .withMessageReference(m1.getT1().getId()))
                                                .flatMap(m1 ->
                                                                 channel.createMessage(EmbedCreateSpec.create()
                                                                                                      .withDescription("Le top **" +
@@ -199,9 +236,7 @@ public class MessagesScraperImpl implements MessagesScraper {
                                                                        .withMessageReference(m1.getId()))
                                                .flatMap(m1 ->
                                                                 channel.createMessage(EmbedCreateSpec.create()
-                                                                                                     .withDescription("Le top **" +
-                                                                                                                      Math.min(nbWords,
-                                                                                                                               recap.getHours().size()) +
+                                                                                                     .withDescription("Le top **" + recap.getHours().size() +
                                                                                                                       "** des heures les plus actives sont :")
                                                                                                      .withFields(recap.getHours()
                                                                                                                       .entrySet()
@@ -214,13 +249,22 @@ public class MessagesScraperImpl implements MessagesScraper {
                                                                                                                                          "** messages",
                                                                                                                                          false))
                                                                                                                       .toList())
-                                                                                                     .withColor(Color.WHITE))
+                                                                                                     .withColor(Color.WHITE)
+                                                                                                     .withImage(ChartUtils.getBHS(recap.getHours()
+                                                                                                                                       .entrySet()
+                                                                                                                                       .stream()
+                                                                                                                                       .sorted(Map.Entry.comparingByKey())
+                                                                                                                                       .collect(
+                                                                                                                                               Collectors.toMap(e -> e.getKey() + "h",
+                                                                                                                                                                Map.Entry::getValue,
+                                                                                                                                                                (a, b) -> a,
+                                                                                                                                                                LinkedHashMap::new)),
+                                                                                                                                  recap.getNbMessage())))
                                                                        .withMessageReference(m1.getId()))
                                                .flatMap(m1 ->
                                                                 channel.createMessage(EmbedCreateSpec.create()
                                                                                                      .withDescription("Le top **" +
-                                                                                                                      Math.min(nbWords,
-                                                                                                                               recap.getWords().size()) +
+                                                                                                                      Math.min(7, recap.getDays().size()) +
                                                                                                                       "** des jours les plus actifs sont :")
                                                                                                      .withFields(recap.getDays()
                                                                                                                       .entrySet()
@@ -234,7 +278,29 @@ public class MessagesScraperImpl implements MessagesScraper {
                                                                                                                                          "** messages",
                                                                                                                                          false))
                                                                                                                       .toList())
-                                                                                                     .withColor(Color.WHITE))
+                                                                                                     .withColor(Color.WHITE)
+                                                                                                     .withImage(ChartUtils.getBHS(recap.getDays()
+                                                                                                                                       .entrySet()
+                                                                                                                                       .stream()
+                                                                                                                                       .sorted(Map.Entry.comparingByKey())
+                                                                                                                                       .map(e -> Pair.of(
+                                                                                                                                               StringUtils.capitalize(
+                                                                                                                                                       DayOfWeek.of(e.getKey().intValue())
+                                                                                                                                                                .getDisplayName(
+                                                                                                                                                                        TextStyle.FULL_STANDALONE,
+                                                                                                                                                                        Locale.FRANCE)),
+                                                                                                                                               e.getValue()))
+                                                                                                                                       .collect(
+                                                                                                                                               Collectors.toMap(
+                                                                                                                                                       Pair::getKey,
+                                                                                                                                                       Pair::getValue,
+                                                                                                                                                       (a, b) -> a,
+                                                                                                                                                       LinkedHashMap::new)),
+                                                                                                                                  recap.getDays().values()
+                                                                                                                                       .stream()
+                                                                                                                                       .mapToLong(
+                                                                                                                                               Long::longValue)
+                                                                                                                                       .sum())))
                                                                        .withMessageReference(m1.getId()));
                              }).subscribe();
     }

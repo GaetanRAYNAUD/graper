@@ -35,6 +35,7 @@ public class GlobalCommandRegistrar implements ApplicationRunner {
                        .flatMapMany(id -> this.client.getApplicationService()
                                                      .bulkOverwriteGuildApplicationCommand(id, this.properties.getDiscord().getGuildTestId(),
                                                                                            this.commands.stream().map(SlashCommand::getRequest).toList()))
+                       .collectList()
                        .doOnNext(ignore -> LOGGER.debug("Successfully registered Guild Test Commands"))
                        .doOnError(e -> LOGGER.error("Failed to register Guild Test commands", e))
                        .subscribe();
@@ -42,6 +43,7 @@ public class GlobalCommandRegistrar implements ApplicationRunner {
             this.client.getApplicationId()
                        .flatMapMany(id -> this.client.getApplicationService()
                                                      .bulkOverwriteGlobalApplicationCommand(id, this.commands.stream().map(SlashCommand::getRequest).toList()))
+                       .collectList()
                        .doOnNext(ignore -> LOGGER.debug("Successfully registered Global Commands"))
                        .doOnError(e -> LOGGER.error("Failed to register Global commands", e))
                        .subscribe();

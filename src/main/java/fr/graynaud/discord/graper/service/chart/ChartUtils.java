@@ -7,6 +7,7 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -50,8 +51,42 @@ public class ChartUtils {
     }
 
     public static String getPie(Map<String, Long> data) {
-        String sb = "https://image-charts.com/chart?cht=p&chs=700x450&chd=a:" + data.values().stream().map(String::valueOf).collect(Collectors.joining(",")) +
+        String sb = "https://image-charts.com/chart?cht=p&chs=800x450&chd=a:" + data.values().stream().map(String::valueOf).collect(Collectors.joining(",")) +
                     "&chl=" + data.keySet().stream().map(String::valueOf).collect(Collectors.joining("|"));
+
+        return UriComponentsBuilder.fromUriString(sb).toUriString();
+    }
+
+    public static String getBHS(Map<String, Long> data, long total) {
+        return getBHS(Stream.concat(data.entrySet().stream(), Stream.of(Pair.of("Autres", total - data.values().stream().mapToLong(Long::longValue).sum())))
+                            .filter(e -> e.getValue() > 0)
+                            .collect(Collectors.toMap(
+                                    e -> e.getKey() + " (" + e.getValue() + " - " + TextPercentCommand.NUMBER_FORMAT.format(e.getValue() / (double) total) +
+                                         ")", Map.Entry::getValue, (a, b) -> a, LinkedHashMap::new)));
+    }
+
+    public static String getBHS(Map<String, Long> data) {
+        String sb = "https://image-charts.com/chart?cht=bhs&chs=800x450&chdlp=b&chd=a:" +
+                    data.values().stream().map(String::valueOf).collect(Collectors.joining("|")) +
+                    "&chdl=" + data.keySet().stream().map(String::valueOf).collect(Collectors.joining("|")) +
+                    "&chl=" + data.values().stream().map(String::valueOf).collect(Collectors.joining("|"));
+
+        return UriComponentsBuilder.fromUriString(sb).toUriString();
+    }
+
+    public static String getBVG(Map<String, Long> data, long total) {
+        return getBVG(Stream.concat(data.entrySet().stream(), Stream.of(Pair.of("Autres", total - data.values().stream().mapToLong(Long::longValue).sum())))
+                            .filter(e -> e.getValue() > 0)
+                            .collect(Collectors.toMap(
+                                    e -> e.getKey() + " (" + e.getValue() + " - " + TextPercentCommand.NUMBER_FORMAT.format(e.getValue() / (double) total) +
+                                         ")", Map.Entry::getValue, (a, b) -> a, LinkedHashMap::new)));
+    }
+
+    public static String getBVG(Map<String, Long> data) {
+        String sb = "https://image-charts.com/chart?cht=bvg&chs=800x450&chdlp=b&chd=a:" +
+                    data.values().stream().map(String::valueOf).collect(Collectors.joining("|")) +
+                    "&chdl=" + data.keySet().stream().map(String::valueOf).collect(Collectors.joining("|")) +
+                    "&chl=" + data.values().stream().map(String::valueOf).collect(Collectors.joining("|"));
 
         return UriComponentsBuilder.fromUriString(sb).toUriString();
     }

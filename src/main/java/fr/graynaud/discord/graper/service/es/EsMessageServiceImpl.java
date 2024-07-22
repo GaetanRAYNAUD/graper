@@ -275,8 +275,8 @@ public class EsMessageServiceImpl implements EsMessageService {
                                              .withAggregation("count", ValueCountAggregation.of(b -> b.field("id"))._toAggregation())
                                              .withAggregation("channel", TermsAggregation.of(b -> b.field("channel_id").size(nbWords))._toAggregation())
                                              .withAggregation("author", TermsAggregation.of(b -> b.field("author_id").size(nbWords))._toAggregation())
-                                             .withAggregation("hour", TermsAggregation.of(b -> b.field("hour_of_day").size(nbWords))._toAggregation())
-                                             .withAggregation("day", TermsAggregation.of(b -> b.field("day").size(nbWords))._toAggregation())
+                                             .withAggregation("hour", TermsAggregation.of(b -> b.field("hour_of_day").size(24))._toAggregation())
+                                             .withAggregation("day", TermsAggregation.of(b -> b.field("day").size(7))._toAggregation())
                                              .withAggregation("words", TermsAggregation.of(b -> b.field("content").size(nbWords))._toAggregation())
                                              .build();
 
